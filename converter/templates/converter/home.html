@@ -1,0 +1,23 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home - JPEG2000 Converter</title>
+    <link rel="stylesheet" href="{% static 'style.css' %}">
+</head>
+<body>
+    <div class="full-container">
+        <div class="container">
+            <h1>Welcome to JPEG2000 Converter</h1>
+            <p>Choose an option below to encode or decode your images.</p>
+            <div class="button-group">
+                <button onclick="window.location.href='/encode/'">Encode</button>
+                <button onclick="window.location.href='/decode/'">Decode</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+
