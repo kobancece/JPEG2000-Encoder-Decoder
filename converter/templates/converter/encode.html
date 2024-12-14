@@ -4,69 +4,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Encode Your Image</title>
+    <title>JPEG2000 Encoder</title>
     <link rel="stylesheet" href="{% static 'style.css' %}">
 </head>
 <body>
-    <div class="full-container">
-        <div class="container">
-            <h1>Encode Your Image</h1>
-            <form method="POST" enctype="multipart/form-data">
-                {% csrf_token %}
-                <!-- Resim Yükleme Alanı -->
-                <label for="image">Upload Image:</label>
-                <input type="file" name="image" accept="image/*" required><br>
+    <div class="container">
+        <h1>JPEG2000 Encoder</h1>
+        <form method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+            <label for="image">Upload Image:</label>
+            <input type="file" name="image" accept="image/*" required><br>
 
-                <!-- Parametre Girişleri -->
-                <div class="parameter-group">
-                    <div>
-                        <label for="param1">Parameter 1:</label>
-                        <input type="text" name="param1" required>
-                    </div>
-                    <div>
-                        <label for="param2">Parameter 2:</label>
-                        <input type="text" name="param2" required>
-                    </div>
-                </div>
-                <div class="parameter-group">
-                    <div>
-                        <label for="param3">Parameter 3:</label>
-                        <input type="text" name="param3" required>
-                    </div>
-                    <div>
-                        <label for="param4">Parameter 4:</label>
-                        <input type="text" name="param4" required>
-                    </div>
-                </div>
-                <div class="parameter-group">
-                    <div>
-                        <label for="param5">Parameter 5:</label>
-                        <input type="text" name="param5" required>
-                    </div>
-                    <div>
-                        <label for="param6">Parameter 6:</label>
-                        <input type="text" name="param6" required>
-                    </div>
-                </div>
+            <label for="wavelet_level">Wavelet Level:</label>
+            <input type="number" name="wavelet_level" min="1" max="5" value="{{ wavelet_level }}" required><br>
 
-                <!-- İşleme Butonu -->
-                <button type="submit">Convert</button>
-            </form>
+            <label for="compression_ratios">Compression Ratios (comma-separated):</label>
+            <input type="text" name="compression_ratios" value="{{ compression_ratios }}" placeholder="e.g. 30,20" required><br>
 
-            <!-- Geri Butonu -->
-            <button class="back-btn" onclick="window.location.href='/'">Back to Home</button>
+            <label for="tile_size">Tile Size (width,height):</label>
+            <input type="text" name="tile_size" value="{{ tile_size }}" placeholder="e.g., 128,128" required><br>
 
-            <!-- İşlenmiş Resim -->
-            {% if result_image %}
-            <div class="processed-image">
-                <h2>Processed Image:</h2>
-                <img src="{{ result_image }}" alt="Processed Image">
-                <a href="{{ result_image }}" download>
-                    <button>Download</button>
-                </a>
-            </div>
-            {% endif %}
+            <label for="threshold">Threshold:</label>
+            <input type="number" name="threshold" step="0.01" value="{{ threshold }}" required><br>
+
+            <label for="roi">ROI (x_start,y_start,width,height):</label>
+            <input type="text" name="roi" value="{{ roi }}" placeholder="e.g., 100,50,200,150"><br>
+
+            <button type="submit">Encode</button>
+        </form>
+
+        {% if result_image %}
+        <div class="processed-image" id="result-section">
+            <h2>Compressed Image:</h2>
+            <img src="{{ result_image }}" alt="Compressed Image">
+            <p>Original Size: {{ original_size }}</p>
+            <p>Compressed Size: {{ compressed_size }}</p>
+            <a href="{{ compressed_image_url }}" download>
+                <button>Download JP2 Image</button>
+            </a>
         </div>
+        {% endif %}
+
+        {% if error %}
+        <p class="error">Error: {{ error }}</p>
+        {% endif %}
+
+        <a href="/" class="back-button">Back to Home</a>
     </div>
 </body>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Eğer result-section varsa
+        const resultSection = document.getElementById('result-section');
+        if (resultSection) {
+            // Otomatik olarak oraya kaydır
+            resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    });
+</script>
 </html>
