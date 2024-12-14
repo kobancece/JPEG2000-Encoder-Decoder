@@ -5,6 +5,7 @@ from PIL import Image
 import os
 from django.core.files.storage import FileSystemStorage
 from django.shortcuts import render
+from matplotlib.path import Path
 from utils.prepare_image import load_and_prepare_image
 from utils.dwt import apply_dwt
 from utils.quantization import apply_quantization
@@ -114,34 +115,100 @@ def encode(request):
     })
 
 
+SUPPORTED_FORMATS = {"png", "jpeg", "jpg", "bmp"}  # Desteklenen formatlar
+
+def decode_images(uploaded_file, decoded_dir):
+    try:
+        print(f"Uploaded file name: {uploaded_file.name}")
+
+        # Check unsupported format
+        if not uploaded_file.name.endswith('.jp2'):
+            print("File is not a .jp2 file.")
+            return None, "Invalid file format. Please upload a valid JPEG2000 (.jp2) file."
+
+        # Create the directory for decoded images if it doesn't exist
+        decoded_dir = Path(decoded_dir)
+        decoded_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Decoded directory created or already exists: {decoded_dir}")
+
+        # Save the uploaded file temporarily
+        temp_path = decoded_dir / uploaded_file.name
+        print(f"Temporary file path: {temp_path}")
+        with open(temp_path, 'wb+') as temp_file:
+            for chunk in uploaded_file.chunks():
+                temp_file.write(chunk)
+        print(f"File saved temporarily at: {temp_path}")
+
+        # Check if the uploaded file is in JPEG2000 format
+        with Image.open(temp_path) as img:
+            print(f"Image format detected: {img.format}")
+            if img.format != "JPEG2000":
+                print("File is not in JPEG2000 format. Deleting temporary file.")
+                temp_path.unlink()  # Remove the file if it's not valid
+                return None, "Invalid file format. Please upload a valid JPEG2000 file."
+
+            # Determine the original format from filename
+            decoded_extension = uploaded_file.name.split(".")[0].split("_")[-1].lower()
+            print(f"Original format detected from filename: {decoded_extension}")
+
+            # If format is unsupported, default to PNG
+            if decoded_extension not in SUPPORTED_FORMATS:
+                decoded_extension = "png"  # Default format
+                warning_message = "Format could not be detected. Converted to PNG."
+                print(warning_message)
+            else:
+                warning_message = None
+                print(f"Detected format is supported: {decoded_extension}")
+
+            # Decode and save the image with the detected or default format
+            decoded_path = decoded_dir / f"{temp_path.stem}_decoded.{decoded_extension}"
+            img.save(decoded_path, format=decoded_extension.upper())
+            print(f"Decoded file saved at: {decoded_path}")
+            return decoded_path, warning_message  # Return path and optional warning
+
+    except Exception as e:
+        print(f"Error occurred: {e}")
+        return None, str(e)  # Return error message if any
+
+
+
 def decode(request):
-    if request.method == 'POST':
-        # Kullanıcıdan alınan resim
-        uploaded_image = request.FILES['image']
+    if request.method == 'POST' and 'image' in request.FILES:
+        uploaded_file = request.FILES['image']
+        print(f"Uploaded file: {uploaded_file.name}")
         
-        # Kullanıcıdan alınan parametreler
-        param1 = request.POST.get('param1')
-        param2 = request.POST.get('param2')
-        param3 = request.POST.get('param3')
-        param4 = request.POST.get('param4')
-        param5 = request.POST.get('param5')
-        param6 = request.POST.get('param6')
-        
-        # Şimdilik, sadece yüklenen resmi işlenmiş resim olarak geri gönderiyoruz
-        # İşlenmiş resim oluşturma (ileride burayı doldurabilirsiniz):
-        # processed_image_path = process_image(uploaded_image, param1, param2, param3, param4, param5, param6)
+        # Specify the directory for decoded files
+        decoded_directory = 'media/decoded/'
+        print(f"Decoded directory: {decoded_directory}")
 
-        # Yüklenen resmi frontend'e geri gönderiyoruz
+        # Call the decoding function
+        decoded_image_path, warning_message = decode_images(uploaded_file, decoded_directory)
+        print(f"Decoded image path: {decoded_image_path}")
+        print(f"Warning message: {warning_message}")
+
+        if not decoded_image_path:
+            print("Decoding failed. Returning an error message to the template.")
+            # Return error if decoding failed
+            return render(request, 'converter/decode.html', {
+                'error_message': "An error occurred while decoding the file."
+            })
+
+        # Provide the decoded image URL to the template
+        fs = FileSystemStorage(location=decoded_directory)
+        decoded_image_url = fs.url(os.path.basename(decoded_image_path))
+        print(f"Decoded image URL: {decoded_image_url}")
+    
+        # Extract the decoded format from the file extension
+        decoded_format = decoded_image_path.suffix[1:]  # Extract extension without the dot
+        print(f"Decoded format: {decoded_format}")
+
         return render(request, 'converter/decode.html', {
-            'result_image': uploaded_image,
-            'param1': param1,
-            'param2': param2,
-            'param3': param3,
-            'param4': param4,
-            'param5': param5,
-            'param6': param6,
+            'result_image': decoded_image_url,
+            'decoded_format': decoded_format,  # Send the format to the HTML template
+            'warning_message': warning_message  # Send any warning to the HTML template
         })
-    return render(request, 'converter/code.html')
 
+    print("Request is not POST or does not contain an 'image'. Rendering the default decode page.")
+    return render(request, 'converter/decode.html')
 
 
