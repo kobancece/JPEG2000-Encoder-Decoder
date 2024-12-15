@@ -2,9 +2,9 @@ from django.shortcuts import render
 from django.http import HttpResponse
 from django.core.files.storage import FileSystemStorage
 from PIL import Image
-import os
-from django.core.files.storage import FileSystemStorage
 from django.shortcuts import render
+from matplotlib.path import Path
+from jpeg2000converter import settings
 from utils.prepare_image import load_and_prepare_image
 from utils.dwt import apply_dwt
 from utils.quantization import apply_quantization
@@ -16,12 +16,18 @@ from utils.ebcot import apply_ebcot
 from utils.arithmetic_encoding import apply_arithmetic_coding
 from utils.convert import convert_jp2_to_png
 import os
-from django.core.files.storage import FileSystemStorage
-from django.shortcuts import render
-from PIL import Image
 import glymur
-import matplotlib.pyplot as plt
 import numpy as np
+#import logging
+from utils.decode import decode_images
+
+#logger = logging.getLogger(__name__)
+#logger.setLevel(logging.INFO)  
+#logger.debug('Debug mesajı')
+#logger.info('Info mesajı')
+#logger.warning('Warning mesajı')
+#logger.error('Error mesajı')
+
 
 def home(request):
     return render(request, 'converter/home.html')
@@ -116,32 +122,36 @@ def encode(request):
 
 def decode(request):
     if request.method == 'POST':
-        # Kullanıcıdan alınan resim
-        uploaded_image = request.FILES['image']
+        uploaded_file = request.FILES['image']
+        output_format = request.POST.get('output_format', 'jpeg')  # Varsayılan olarak 'jpeg' al
         
-        # Kullanıcıdan alınan parametreler
-        param1 = request.POST.get('param1')
-        param2 = request.POST.get('param2')
-        param3 = request.POST.get('param3')
-        param4 = request.POST.get('param4')
-        param5 = request.POST.get('param5')
-        param6 = request.POST.get('param6')
+        fs = FileSystemStorage()
+        filename = fs.save(uploaded_file.name, uploaded_file)
+        uploaded_image_path = fs.path(filename)
+        decoded_directory = settings.MEDIA_ROOT
+
+        # Decode işlemi
+        decoded_image_path, original_size, decodedimage_size, error = decode_images(
+            uploaded_image_path, decoded_directory, output_format=output_format
+        )
         
-        # Şimdilik, sadece yüklenen resmi işlenmiş resim olarak geri gönderiyoruz
-        # İşlenmiş resim oluşturma (ileride burayı doldurabilirsiniz):
-        # processed_image_path = process_image(uploaded_image, param1, param2, param3, param4, param5, param6)
+        if decoded_image_path:
+            decoded_image_url = fs.url(os.path.basename(decoded_image_path))
+            
+            # Yüzde değişim hesapla
+            if original_size > 0:  # Bölme hatasını önlemek için
+                  percentage_change = ((original_size - decodedimage_size) / original_size) * 100
+            else:
+                percentage_change = 0  # Orijinal dosya boyutu 0 ise yüzde değişim sıfır
+            
+            return render(request, 'converter/decode.html', {
+                'result_image': decoded_image_url,
+                'decoded_format': output_format,  # Seçilen format
+                'original_size': f"{original_size:.2f} KB",
+                'decodedimage_size': f"{decodedimage_size:.2f} KB",
+                'percentage_change': f"{percentage_change:.2f}%",
+            })
+        else:
+            return render(request, 'converter/decode.html', {'error_message': error})
 
-        # Yüklenen resmi frontend'e geri gönderiyoruz
-        return render(request, 'converter/decode.html', {
-            'result_image': uploaded_image,
-            'param1': param1,
-            'param2': param2,
-            'param3': param3,
-            'param4': param4,
-            'param5': param5,
-            'param6': param6,
-        })
-    return render(request, 'converter/code.html')
-
-
-
+    return render(request, 'converter/decode.html')

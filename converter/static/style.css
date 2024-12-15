@@ -198,3 +198,28 @@ img:hover {
     background-color: #2a4887;
 }
 
+/* Form Elemanları Arasındaki Boşluğu Ayarlama */
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px; /* Form elemanları arasında boşluk */
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+/* Buton Stili */
+form button {
+    margin-top: 15px; /* Butonu aşağı kaydır */
+    padding: 10px 20px;
+    background: linear-gradient(to right, #6a11cb, #2575fc);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+form button:hover {
+    background: linear-gradient(to right, #2575fc, #6a11cb);
+}

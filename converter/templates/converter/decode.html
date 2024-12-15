@@ -4,69 +4,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Decode Image</title>
+    <title>JPEG2000 Decoder</title>
     <link rel="stylesheet" href="{% static 'style.css' %}">
 </head>
 <body>
-    <div class="full-container">
-        <div class="container">
-            <h1>Decode Your Image</h1>
-            <form method="POST" enctype="multipart/form-data">
-                {% csrf_token %}
-                <!-- Resim Yükleme Alanı -->
-                <label for="image">Upload Image:</label>
-                <input type="file" name="image" accept="image/*" required><br>
+    <div class="container">
+        <h1>JPEG2000 Decoder</h1>
+        <form method="POST" enctype="multipart/form-data" id="encodeForm" >
+            {% csrf_token %}
+            <label for="image">Upload Image:</label>
+            <input type="file" name="image" accept="jp2/*" id='fileInput' required><br>
 
-                <!-- Parametre Girişleri -->
-                <div class="parameter-group">
-                    <div>
-                        <label for="param1">Parameter 1:</label>
-                        <input type="text" name="param1" required>
-                    </div>
-                    <div>
-                        <label for="param2">Parameter 2:</label>
-                        <input type="text" name="param2" required>
-                    </div>
-                </div>
-                <div class="parameter-group">
-                    <div>
-                        <label for="param3">Parameter 3:</label>
-                        <input type="text" name="param3" required>
-                    </div>
-                    <div>
-                        <label for="param4">Parameter 4:</label>
-                        <input type="text" name="param4" required>
-                    </div>
-                </div>
-                <div class="parameter-group">
-                    <div>
-                        <label for="param5">Parameter 5:</label>
-                        <input type="text" name="param5" required>
-                    </div>
-                    <div>
-                        <label for="param6">Parameter 6:</label>
-                        <input type="text" name="param6" required>
-                    </div>
-                </div>
+  
+            <label for="output_format">Select Output Format:</label>
+            <select name="output_format" required>
+                <option value="jpeg">JPEG</option>
+                <option value="png">PNG</option>
+                <option value="bmp">BMP</option>
+            </select>
+            <button type="submit">Decode</button>
+        </form>
+        {% if error %}
+        <p class="error">Error: {{ error }}</p>
+        {% endif %}
 
-                <!-- İşleme Butonu -->
-                <button type="submit">Convert</button>
-            </form>
-
-            <!-- Geri Butonu -->
-            <button class="back-btn" onclick="window.location.href='/'">Back to Home</button>
-
-            <!-- İşlenmiş Resim -->
-            {% if result_image %}
-            <div class="processed-image">
-                <h2>Processed Image:</h2>
-                <img src="{{ result_image }}" alt="Processed Image">
-                <a href="{{ result_image }}" download>
-                    <button>Download</button>
-                </a>
-            </div>
-            {% endif %}
+      
+        {% if error_message %}
+        <div class="error">
+            <p>Error: {{ error_message }}</p>
         </div>
+        {% endif %}
+        
+        {% if result_image %}
+<div class="processed-image" id="result-section">
+    <p>Original Size: {{ original_size }}</p>
+    <p>Decoded Image  Size: {{ decodedimage_size }}</p>
+    <p>Size Change: {{ percentage_change }}</p>
+    <p>Decoded Format: {{ decoded_format }}</p>
+    <a href="{{ result_image }}" download>
+        <button>Download Image</button>
+    </a>
+</div>
+{% endif %}
+<a href="/" class="back-button">Back to Home</a>
     </div>
+   
 </body>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // DOM Elemanlarını Seç
+    
+        const fileInput = document.getElementById('fileInput');
+        const resultSection = document.getElementById('result-section');
+
+        let ctx, img, isSelecting = false;
+
+        // Kontroller
+        if ( !fileInput) {
+            console.error("Bazı gerekli DOM elemanları eksik. Lütfen HTML yapılarını kontrol edin.");
+            return;
+        }
+
+        // Eğer result-section varsa, otomatik olarak oraya kaydır
+        if (resultSection) {
+            resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+     
+    });
+
+</script>
 </html>
