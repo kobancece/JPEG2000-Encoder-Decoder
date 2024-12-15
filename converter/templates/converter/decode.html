@@ -4,140 +4,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Decode - JPEG2000 Converter</title>
+    <title>JPEG2000 Decoder</title>
     <link rel="stylesheet" href="{% static 'style.css' %}">
-    <style>
-        /* Popup Modal CSS */
-        .modal {
-            display: none; /* Başlangıçta gizli */
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0, 0, 0, 0.4);
-        }
-
-        .modal-content {
-            background-color: #fefefe;
-            margin: 15% auto;
-            padding: 20px;
-            border: 1px solid #888;
-            width: 80%;
-            max-width: 400px;
-            text-align: center;
-            border-radius: 10px;
-        }
-
-        .close-btn {
-            background-color: #4caf50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            cursor: pointer;
-            font-size: 16px;
-            border-radius: 5px;
-            margin-top: 10px;
-        }
-
-        .close-btn:hover {
-            background-color: #45a049;
-        }
-
-        .error-text {
-            color: #721c24;
-            font-size: 16px;
-            margin-bottom: 15px;
-        }
-
-        .warning-text {
-            color: #856404;
-            font-size: 16px;
-            margin-bottom: 15px;
-        }
-    </style>
 </head>
 <body>
-    <div class="full-container">
-        <div class="container">
-            <h1>Decode JPEG2000 to PNG</h1>
-            
-            <form method="post" enctype="multipart/form-data">
-                {% csrf_token %}
-                <!-- Image Upload Field -->
-                <label for="image">Upload Image:</label>
-                <input type="file" name="image" accept="image/*" required><br>
+    <div class="container">
+        <h1>JPEG2000 Decoder</h1>
+        <form method="POST" enctype="multipart/form-data" id="encodeForm" >
+            {% csrf_token %}
+            <label for="image">Upload Image:</label>
+            <input type="file" name="image" accept="jp2/*" id='fileInput' required><br>
 
-                <!-- Convert Button -->
-                <button type="submit">Convert</button>
-            </form>
+  
+            <label for="output_format">Select Output Format:</label>
+            <select name="output_format" required>
+                <option value="jpeg">JPEG</option>
+                <option value="png">PNG</option>
+                <option value="bmp">BMP</option>
+            </select>
+            <button type="submit">Decode</button>
+        </form>
+        {% if error %}
+        <p class="error">Error: {{ error }}</p>
+        {% endif %}
 
-            <!-- Back to Home Button -->
-            <button class="back-btn" onclick="window.location.href='/'">Back to Home</button>
-
-            <!-- Processed Image -->
-            {% if result_image %}
-            <div class="result-container">
-                <h2>Decoded Image:</h2>
-                <img src="{{ result_image }}" alt="Decoded Image">
-                <p>File Format: {{ decoded_format }}</p>
-                <p><a href="{{ result_image }}" download>Download Decoded Image</a></p>
-            </div>
-            {% endif %}
+      
+        {% if error_message %}
+        <div class="error">
+            <p>Error: {{ error_message }}</p>
         </div>
+        {% endif %}
+        
+        {% if result_image %}
+<div class="processed-image" id="result-section">
+    <p>Original Size: {{ original_size }}</p>
+    <p>Decoded Image  Size: {{ decodedimage_size }}</p>
+    <p>Size Change: {{ percentage_change }}</p>
+    <p>Decoded Format: {{ decoded_format }}</p>
+    <a href="{{ result_image }}" download>
+        <button>Download Image</button>
+    </a>
+</div>
+{% endif %}
+<a href="/" class="back-button">Back to Home</a>
     </div>
-
-    <!-- Popup Modal for Error Messages -->
-    {% if error_message %}
-    <div id="errorModal" class="modal">
-        <div class="modal-content">
-            <p class="error-text">{{ error_message }}</p>
-            <button class="close-btn" onclick="closeModal()">OK</button>
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Popup Modal for Warning Messages -->
-    {% if warning_message %}
-    <div id="warningModal" class="modal">
-        <div class="modal-content">
-            <p class="warning-text">{{ warning_message }}</p>
-            <button class="close-btn" onclick="closeWarningModal()">OK</button>
-        </div>
-    </div>
-    {% endif %}
-
-    <script>
-        // JavaScript to Show Error Modal
-        document.addEventListener("DOMContentLoaded", function() {
-            const errorModal = document.getElementById("errorModal");
-            if (errorModal) {
-                errorModal.style.display = "block"; // Show error modal if it exists
-            }
-
-            const warningModal = document.getElementById("warningModal");
-            if (warningModal) {
-                warningModal.style.display = "block"; // Show warning modal if it exists
-            }
-        });
-
-        // Close Modal Function for Error
-        function closeModal() {
-            const modal = document.getElementById("errorModal");
-            if (modal) {
-                modal.style.display = "none";
-            }
-        }
-
-        // Close Modal Function for Warning
-        function closeWarningModal() {
-            const modal = document.getElementById("warningModal");
-            if (modal) {
-                modal.style.display = "none";
-            }
-        }
-    </script>
+   
 </body>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // DOM Elemanlarını Seç
+    
+        const fileInput = document.getElementById('fileInput');
+        const resultSection = document.getElementById('result-section');
+
+        let ctx, img, isSelecting = false;
+
+        // Kontroller
+        if ( !fileInput) {
+            console.error("Bazı gerekli DOM elemanları eksik. Lütfen HTML yapılarını kontrol edin.");
+            return;
+        }
+
+        // Eğer result-section varsa, otomatik olarak oraya kaydır
+        if (resultSection) {
+            resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+     
+    });
+
+</script>
 </html>

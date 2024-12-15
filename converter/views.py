@@ -2,10 +2,9 @@ from django.shortcuts import render
 from django.http import HttpResponse
 from django.core.files.storage import FileSystemStorage
 from PIL import Image
-import os
-from django.core.files.storage import FileSystemStorage
 from django.shortcuts import render
 from matplotlib.path import Path
+from jpeg2000converter import settings
 from utils.prepare_image import load_and_prepare_image
 from utils.dwt import apply_dwt
 from utils.quantization import apply_quantization
@@ -17,12 +16,18 @@ from utils.ebcot import apply_ebcot
 from utils.arithmetic_encoding import apply_arithmetic_coding
 from utils.convert import convert_jp2_to_png
 import os
-from django.core.files.storage import FileSystemStorage
-from django.shortcuts import render
-from PIL import Image
 import glymur
-import matplotlib.pyplot as plt
 import numpy as np
+#import logging
+from utils.decode import decode_images
+
+#logger = logging.getLogger(__name__)
+#logger.setLevel(logging.INFO)  
+#logger.debug('Debug mesajı')
+#logger.info('Info mesajı')
+#logger.warning('Warning mesajı')
+#logger.error('Error mesajı')
+
 
 def home(request):
     return render(request, 'converter/home.html')
@@ -115,100 +120,38 @@ def encode(request):
     })
 
 
-SUPPORTED_FORMATS = {"png", "jpeg", "jpg", "bmp"}  # Desteklenen formatlar
-
-def decode_images(uploaded_file, decoded_dir):
-    try:
-        print(f"Uploaded file name: {uploaded_file.name}")
-
-        # Check unsupported format
-        if not uploaded_file.name.endswith('.jp2'):
-            print("File is not a .jp2 file.")
-            return None, "Invalid file format. Please upload a valid JPEG2000 (.jp2) file."
-
-        # Create the directory for decoded images if it doesn't exist
-        decoded_dir = Path(decoded_dir)
-        decoded_dir.mkdir(parents=True, exist_ok=True)
-        print(f"Decoded directory created or already exists: {decoded_dir}")
-
-        # Save the uploaded file temporarily
-        temp_path = decoded_dir / uploaded_file.name
-        print(f"Temporary file path: {temp_path}")
-        with open(temp_path, 'wb+') as temp_file:
-            for chunk in uploaded_file.chunks():
-                temp_file.write(chunk)
-        print(f"File saved temporarily at: {temp_path}")
-
-        # Check if the uploaded file is in JPEG2000 format
-        with Image.open(temp_path) as img:
-            print(f"Image format detected: {img.format}")
-            if img.format != "JPEG2000":
-                print("File is not in JPEG2000 format. Deleting temporary file.")
-                temp_path.unlink()  # Remove the file if it's not valid
-                return None, "Invalid file format. Please upload a valid JPEG2000 file."
-
-            # Determine the original format from filename
-            decoded_extension = uploaded_file.name.split(".")[0].split("_")[-1].lower()
-            print(f"Original format detected from filename: {decoded_extension}")
-
-            # If format is unsupported, default to PNG
-            if decoded_extension not in SUPPORTED_FORMATS:
-                decoded_extension = "png"  # Default format
-                warning_message = "Format could not be detected. Converted to PNG."
-                print(warning_message)
-            else:
-                warning_message = None
-                print(f"Detected format is supported: {decoded_extension}")
-
-            # Decode and save the image with the detected or default format
-            decoded_path = decoded_dir / f"{temp_path.stem}_decoded.{decoded_extension}"
-            img.save(decoded_path, format=decoded_extension.upper())
-            print(f"Decoded file saved at: {decoded_path}")
-            return decoded_path, warning_message  # Return path and optional warning
-
-    except Exception as e:
-        print(f"Error occurred: {e}")
-        return None, str(e)  # Return error message if any
-
-
-
 def decode(request):
-    if request.method == 'POST' and 'image' in request.FILES:
+    if request.method == 'POST':
         uploaded_file = request.FILES['image']
-        print(f"Uploaded file: {uploaded_file.name}")
+        output_format = request.POST.get('output_format', 'jpeg')  # Varsayılan olarak 'jpeg' al
         
-        # Specify the directory for decoded files
-        decoded_directory = 'media/decoded/'
-        print(f"Decoded directory: {decoded_directory}")
+        fs = FileSystemStorage()
+        filename = fs.save(uploaded_file.name, uploaded_file)
+        uploaded_image_path = fs.path(filename)
+        decoded_directory = settings.MEDIA_ROOT
 
-        # Call the decoding function
-        decoded_image_path, warning_message = decode_images(uploaded_file, decoded_directory)
-        print(f"Decoded image path: {decoded_image_path}")
-        print(f"Warning message: {warning_message}")
-
-        if not decoded_image_path:
-            print("Decoding failed. Returning an error message to the template.")
-            # Return error if decoding failed
+        # Decode işlemi
+        decoded_image_path, original_size, decodedimage_size, error = decode_images(
+            uploaded_image_path, decoded_directory, output_format=output_format
+        )
+        
+        if decoded_image_path:
+            decoded_image_url = fs.url(os.path.basename(decoded_image_path))
+            
+            # Yüzde değişim hesapla
+            if original_size > 0:  # Bölme hatasını önlemek için
+                  percentage_change = ((original_size - decodedimage_size) / original_size) * 100
+            else:
+                percentage_change = 0  # Orijinal dosya boyutu 0 ise yüzde değişim sıfır
+            
             return render(request, 'converter/decode.html', {
-                'error_message': "An error occurred while decoding the file."
+                'result_image': decoded_image_url,
+                'decoded_format': output_format,  # Seçilen format
+                'original_size': f"{original_size:.2f} KB",
+                'decodedimage_size': f"{decodedimage_size:.2f} KB",
+                'percentage_change': f"{percentage_change:.2f}%",
             })
+        else:
+            return render(request, 'converter/decode.html', {'error_message': error})
 
-        # Provide the decoded image URL to the template
-        fs = FileSystemStorage(location=decoded_directory)
-        decoded_image_url = fs.url(os.path.basename(decoded_image_path))
-        print(f"Decoded image URL: {decoded_image_url}")
-    
-        # Extract the decoded format from the file extension
-        decoded_format = decoded_image_path.suffix[1:]  # Extract extension without the dot
-        print(f"Decoded format: {decoded_format}")
-
-        return render(request, 'converter/decode.html', {
-            'result_image': decoded_image_url,
-            'decoded_format': decoded_format,  # Send the format to the HTML template
-            'warning_message': warning_message  # Send any warning to the HTML template
-        })
-
-    print("Request is not POST or does not contain an 'image'. Rendering the default decode page.")
     return render(request, 'converter/decode.html')
-
-
