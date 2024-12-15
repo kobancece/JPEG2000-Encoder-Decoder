@@ -21,8 +21,6 @@ def apply_ebcot(image, block_size=64, target_rate=0.5, wavelet_levels=2):
     Returns:
         list: Trankasyondan geçmiş tüm bit akışları.
     """
-    print("\nApplying EBCOT...")
-
     def split_into_blocks(image, block_size):
         """
         Görüntüyü bloklara böler.
@@ -53,22 +51,54 @@ def apply_ebcot(image, block_size=64, target_rate=0.5, wavelet_levels=2):
 
     def encode_bit_planes(bit_planes):
         """
-        Bit planlarını EBCOT geçişlerine göre kodlar.
+        Encode bit planes using EBCOT with context modeling.
+    
+        Parameters:
+            bit_planes (list of numpy.ndarray): List of bit-planes to encode.
+    
+        Returns:
+            list: Encoded bit-streams.
         """
         coded_streams = []
-
+    
         for plane in bit_planes:
-            # Burada Significance Propagation, Magnitude Refinement ve Cleanup Pass uygulanır.
-            coded_stream = significance_propagation(plane)
-            coded_stream = magnitude_refinement(coded_stream)
-            coded_stream = cleanup_pass(coded_stream)
-            coded_streams.append(coded_stream)
-        
+            # 1. Significance Propagation
+            updated_plane = significance_propagation(plane)
+    
+            # 2. Magnitude Refinement (dummy işlem, iyileştirilebilir)
+            magnitude_stream = magnitude_refinement(updated_plane)
+    
+            # 3. Cleanup Pass (dummy işlem, iyileştirilebilir)
+            cleanup_stream = cleanup_pass(magnitude_stream)
+    
+            # Kodlanmış bit akışını ekle
+            coded_streams.append(cleanup_stream)
+    
         return coded_streams
 
     def significance_propagation(plane):
-        # Örnek kod: Bu geçiş için gerçek algoritma uygulanmalıdır.
-        return plane
+        """
+        Perform significance propagation with context modeling.
+    
+        Parameters:
+            plane (numpy.ndarray): The bit-plane to process.
+    
+        Returns:
+            numpy.ndarray: The updated bit-plane after significance propagation.
+        """
+        # 1. Bağlam Modeli Matrisini Oluştur
+        context_model = np.zeros_like(plane)
+    
+        # 2. Her Piksel İçin Komşuluk Bilgisi Hesapla
+        for y in range(1, plane.shape[0] - 1):  # Kenarlardan kaçın
+            for x in range(1, plane.shape[1] - 1):
+                # Komşu piksellerin toplamını bağlam modeli olarak hesapla
+                context_model[y, x] = np.sum(plane[y-1:y+2, x-1:x+2]) - plane[y, x]
+    
+        # 3. Bağlama Göre Düzeltme Uygula
+        updated_plane = plane * (context_model > 0)
+    
+        return updated_plane
 
     def magnitude_refinement(stream):
         # Örnek kod: Bu geçiş için gerçek algoritma uygulanmalıdır.
@@ -102,6 +132,4 @@ def apply_ebcot(image, block_size=64, target_rate=0.5, wavelet_levels=2):
         # Optimal trankasyon uygula
         truncated_streams = optimal_truncation(coded_streams, target_rate)
         all_coded_streams.append(truncated_streams)
-
-    print("EBCOT completed.")
     return all_coded_streams

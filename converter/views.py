@@ -36,8 +36,15 @@ def encode(request):
     if request.method == 'POST':
         # Retrieve user inputs
         uploaded_image = request.FILES['image']
+        
+        # Check file format
+        if not uploaded_image.name.lower().endswith(('.jpeg', '.jpg')):
+            return render(request, 'converter/encode.html', {
+                'error': "Only JPEG format is allowed. Please upload a valid JPEG image.",
+            })
+            
         wavelet_level = int(request.POST.get('wavelet_level', 2))
-        compression_ratios = list(map(int, request.POST.get('compression_ratios', '30,20').split(',')))
+        compression_ratios = list(map(int, request.POST.get('compression_ratios', '40,30').split(',')))
         tile_size = tuple(map(int, request.POST.get('tile_size', '128,128').split(',')))
         threshold = float(request.POST.get('threshold', 0.01))
         roi = request.POST.get('roi', None)
@@ -54,19 +61,22 @@ def encode(request):
         processed_image = load_and_prepare_image(uploaded_image_path)
 
         # Apply ROI if provided
-        if roi:
-            try:
-                roi_coords = tuple(map(int, roi.split(',')))
+        try:
+            if roi and roi != "None":
+                roi_coords = tuple(map(int, roi.split(',')))  # Convert to integers
+                if len(roi_coords) != 4:
+                    raise ValueError("ROI must have exactly 4 values (x, y, width, height).")
                 processed_image = apply_roi_with_highlight(processed_image, roi_coords)
-            except Exception as e:
-                return render(request, 'converter/encode.html', {
-                    'error': f"Invalid ROI format: {e}",
-                    'wavelet_level': wavelet_level,
-                    'compression_ratios': ','.join(map(str, compression_ratios)),
-                    'tile_size': ','.join(map(str, tile_size)),
-                    'threshold': threshold,
-                    'roi': roi,
-                })
+        except ValueError as e:
+            return render(request, 'converter/encode.html', {
+                'error': f"Invalid ROI format: {e}",
+                'wavelet_level': wavelet_level,
+                'compression_ratios': ','.join(map(str, compression_ratios)),
+                'tile_size': ','.join(map(str, tile_size)),
+                'threshold': threshold,
+                'roi': roi,
+            })
+
 
         # Apply DWT
         dwt_results = apply_dwt(processed_image, wavelet='haar', levels=wavelet_level)
@@ -77,10 +87,10 @@ def encode(request):
         )
 
         # Apply EBCOT
-        ebcot_streams = apply_ebcot(reconstructed_image, block_size=64, target_rate=0.5)
+        # ebcot_streams = apply_ebcot(reconstructed_image, block_size=64, target_rate=0.5)
 
         # Apply Arithmetic Coding
-        arithmetic_compressed_streams = apply_arithmetic_coding(ebcot_streams)
+        #arithmetic_compressed_streams = apply_arithmetic_coding(ebcot_streams)
 
         # Save as JPEG2000
         compressed_filename = f"compressed_{uploaded_image.name}.jp2"

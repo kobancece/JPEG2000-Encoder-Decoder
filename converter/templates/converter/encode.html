@@ -5,31 +5,68 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JPEG2000 Encoder</title>
-    <link rel="stylesheet" href="{% static 'style.css' %}">
+    <link rel="stylesheet" href="{% static 'style_encoder.css' %}">
 </head>
 <body>
     <div class="container">
         <h1>JPEG2000 Encoder</h1>
-        <form method="POST" enctype="multipart/form-data">
+        <form method="POST" enctype="multipart/form-data" id="encodeForm">
             {% csrf_token %}
+            <p>Please upload images in jpeg format.</p>
             <label for="image">Upload Image:</label>
-            <input type="file" name="image" accept="image/*" required><br>
+            <input type="file" name="image" accept="image/jpeg" id='fileInput' required><br>
 
-            <label for="wavelet_level">Wavelet Level:</label>
-            <input type="number" name="wavelet_level" min="1" max="5" value="{{ wavelet_level }}" required><br>
+            <div class="parameter-group">
 
-            <label for="compression_ratios">Compression Ratios (comma-separated):</label>
-            <input type="text" name="compression_ratios" value="{{ compression_ratios }}" placeholder="e.g. 30,20" required><br>
+                <label  for="wavelet_level" name="wavelet_level" class="tooltip">Wavelet Level
+                    <input type="number" name="wavelet_level" min="1" max="5" value="{{ wavelet_level }}" required>
+                    <span class="tooltip-text">A lower wavelet level provides less compression and better image quality, but larger file size. A higher wavelet level provides more compression and smaller file size, but may increase image quality degradation.</span>
+                </label>
 
-            <label for="tile_size">Tile Size (width,height):</label>
-            <input type="text" name="tile_size" value="{{ tile_size }}" placeholder="e.g., 128,128" required><br>
 
-            <label for="threshold">Threshold:</label>
-            <input type="number" name="threshold" step="0.01" value="{{ threshold }}" required><br>
+                <!-- Compression Ratios Dropdown -->
+                <label for="compression_ratios" class="tooltip">Compression Ratios
+                    <select id="compression-ratio" name="compression_ratios" required>
+                        <option value="30,20">30,20</option>
+                        <option value="40,30">40,30</option>
+                    </select>
+                    <span class="tooltip-text">A small compression ratio (for example, 30,20) produces higher image quality but reduces file size less. A large compression ratio (for example, 40,30) reduces file size significantly but may result in greater image quality loss.</span>
+                </label>
 
-            <label for="roi">ROI (x_start,y_start,width,height):</label>
-            <input type="text" name="roi" value="{{ roi }}" placeholder="e.g., 100,50,200,150"><br>
+                <!-- Tile Size Dropdown -->
+                <label for="tile-size" class="tooltip">Tile Size
+                    <select id="tile-size" name="tile_size" required>
+                        <option value="128,128">128x128</option>
+                        <option value="64,64">64x64</option>
+                    </select>
+                    <span class="tooltip-text">A smaller tile size (e.g. 64x64) provides more granular compression and preserves better quality in small areas, but may increase processing time. A larger tile size (e.g. 128x128) speeds up compression but may be more susceptible to quality loss in large areas.</span>
+                </label>
 
+                <label class="tooltip">Threshold
+                    <input type="number" name="threshold" min="0.01" max="5" step="0.01" value="{{ threshold }}" required>
+                    <span class="tooltip-text">A lower threshold value preserves more detail but may reduce the compression ratio, resulting in larger file sizes. A higher threshold value increases the compression ratio but may result in loss of fine detail and reduced image quality.</span>
+                </label>
+
+                <label for="roi" class="tooltip">ROI
+                    <span class="tooltip-text">Using ROI (Region of Interest) allows a specific area of ​​the image to be compressed at a higher quality and preserves the details in that area. Areas outside the ROI are compressed more, reducing file size, but there may be a loss of quality in these areas.</span>
+                </label>
+
+                <!-- ROI Seçimi -->
+                <div class="roi-container" style="margin-bottom: 5%">
+                    <p style="display: inline;">Would you like to adjust Roi?</p>
+                    <button type="button" id="roi-yes" style="margin-left: 10px;">Yes</button>
+                </div>
+                <div id="roi-selector" style="display: none;">
+                    <h2>Adjust Image</h2>
+                    <div id="canvas-container">
+                        <canvas id="imageCanvas"></canvas>
+                    </div>
+                    <p>Selected Area (ROI): <span id="roi-coordinates">None</span></p>
+                </div>
+
+                <!-- Gizli ROI Input -->
+                <input type="hidden" name="roi" id="roiInput" value="None">
+            </div>
             <button type="submit">Encode</button>
         </form>
 
@@ -49,17 +86,126 @@
         <p class="error">Error: {{ error }}</p>
         {% endif %}
 
-        <a href="/" class="back-button">Back to Home</a>
+        <a href="/" class="back-button">Back to Home Page</a>
     </div>
 </body>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        // Eğer result-section varsa
+        // DOM Elemanlarını Seç
+        const roiYesButton = document.getElementById('roi-yes');
+        const roiSelector = document.getElementById('roi-selector');
+        const imageCanvas = document.getElementById('imageCanvas');
+        const canvasContainer = document.getElementById('canvas-container');
+        const roiCoordinatesDisplay = document.getElementById('roi-coordinates');
+        const roiInput = document.getElementById('roiInput');
+        const fileInput = document.getElementById('fileInput');
         const resultSection = document.getElementById('result-section');
+
+        let ctx, img, isSelecting = false, startX, startY, endX, endY;
+
+        // Kontroller
+        if (!roiYesButton || !roiSelector || !imageCanvas || !roiCoordinatesDisplay || !roiInput || !fileInput) {
+            console.error("Bazı gerekli DOM elemanları eksik. Lütfen HTML yapılarını kontrol edin.");
+            return;
+        }
+
+        // Eğer result-section varsa, otomatik olarak oraya kaydır
         if (resultSection) {
-            // Otomatik olarak oraya kaydır
             resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+
+        // "Yes" Butonuna Tıklama
+        roiYesButton.addEventListener('click', function () {
+            if (fileInput.files.length > 0) {
+                roiSelector.style.display = 'block';
+                loadImageIntoCanvas();
+            } else {
+                alert('Lütfen önce bir resim yükleyin.');
+            }
+        });
+
+        // Resmi Canvas'a Yükleme
+        function loadImageIntoCanvas() {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                img = new Image();
+                img.onload = function () {
+                    ctx = imageCanvas.getContext('2d');
+                    imageCanvas.width = img.width;
+                    imageCanvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                };
+                img.src = e.target.result;
+            };
+            if (fileInput.files.length > 0) {
+                reader.readAsDataURL(fileInput.files[0]);
+            }
+        }
+
+        // Canvas Üzerinde ROI Seçimi
+        imageCanvas.addEventListener('mousedown', function (e) {
+            isSelecting = true;
+            const rect = imageCanvas.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+        });
+
+        imageCanvas.addEventListener('mousemove', function (e) {
+            if (isSelecting) {
+                const rect = imageCanvas.getBoundingClientRect();
+                endX = e.clientX - rect.left;
+                endY = e.clientY - rect.top;
+
+                // Canvas'ı yeniden çiz ve seçim alanını göster
+                redrawCanvas();
+                drawRectangle(startX, startY, endX, endY);
+            }
+        });
+
+        imageCanvas.addEventListener('mouseup', function () {
+            if (isSelecting) {
+                isSelecting = false;
+        
+                // ROI Coordinates
+                const roiCoords = {
+                    x: Math.min(startX, endX),
+                    y: Math.min(startY, endY),
+                    width: Math.abs(endX - startX),
+                    height: Math.abs(endY - startY),
+                };
+        
+                // Convert to integers
+                roiCoords.x = Math.round(roiCoords.x);
+                roiCoords.y = Math.round(roiCoords.y);
+                roiCoords.width = Math.round(roiCoords.width);
+                roiCoords.height = Math.round(roiCoords.height);
+        
+                // Update ROI display and input field
+                roiCoordinatesDisplay.textContent = `x:${roiCoords.x}, y:${roiCoords.y}, width:${roiCoords.width}, height:${roiCoords.height}`;
+                roiInput.value = `${roiCoords.x},${roiCoords.y},${roiCoords.width},${roiCoords.height}`;
+            }
+        });
+        
+
+        // Canvas'ı Yeniden Çiz
+        function redrawCanvas() {
+            if (ctx && img) {
+                ctx.clearRect(0, 0, imageCanvas.width, imageCanvas.height);
+                ctx.drawImage(img, 0, 0);
+            }
+        }
+
+        // ROI Alanını Çiz
+        function drawRectangle(x1, y1, x2, y2) {
+            if (ctx) {
+                ctx.beginPath();
+                ctx.rect(x1, y1, x2 - x1, y2 - y1);
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = 'red';
+                ctx.stroke();
+            }
+        }
     });
+
 </script>
 </html>

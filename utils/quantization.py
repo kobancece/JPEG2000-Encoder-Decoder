@@ -9,46 +9,48 @@ import glymur
 import cv2
 
 
-def apply_quantization(dwt_coeffs, original_image_shape, threshold_ratio=0.1, quantization_factors=None, wavelet='haar'):
-    print("\nApplying Quantization...")
+def apply_quantization(dwt_coeffs, original_image_shape, wavelet='haar', threshold_ratio=1.5):
+    """
+    Apply adaptive quantization to DWT coefficients and reconstruct the image.
+
+    Parameters:
+        dwt_coeffs (dict): DWT coefficients for each channel.
+        original_image_shape (tuple): Shape of the original image.
+        wavelet (str): Wavelet type used for reconstruction.
+        threshold_ratio (float): Scaling factor for threshold calculation.
+
+    Returns:
+        dict: Quantized DWT coefficients.
+        numpy.ndarray: Reconstructed image.
+    """
     quantized_coeffs = {}
     reconstructed_channels = []
 
-    if quantization_factors is None:
-        quantization_factors = {
-            'LL': 50,
-            'LH': 25,
-            'HL': 25,
-            'HH': 50
-        }
-
     for channel_name, coeffs in dwt_coeffs.items():
         quantized_coeffs[channel_name] = []
-        for j, coeff in enumerate(coeffs):
-            if j == 0:  # LL sub-band
-                quantized_coeffs[channel_name].append(coeff)  # No quantization for LL band
+
+        for i, coeff in enumerate(coeffs):
+            if i == 0:  # LL band
+                quantized_coeffs[channel_name].append(coeff)  # LL bandı kuantize edilmeden bırakılıyor
             else:
                 sub_bands = ['LH', 'HL', 'HH']
                 quantized_bands = []
-                for k, sub_coeff in enumerate(coeff):
-                    threshold = np.percentile(np.abs(sub_coeff), 90)
+                for k, sub_coeff in enumerate(coeff):  # Alt bandı tek tek işle
+                    threshold = np.median(np.abs(sub_coeff)) * threshold_ratio  # threshold_ratio burada kullanılıyor
                     coeff_thresholded = pywt.threshold(sub_coeff, threshold, mode='soft')
+                    quantization_factor = 10  # Sabit bir faktör
+                    quantized_band = np.round(coeff_thresholded / quantization_factor) * quantization_factor
+                    quantized_bands.append(quantized_band)
+                quantized_coeffs[channel_name].append(tuple(quantized_bands))  # Alt bantları tuple olarak ekle
 
-                    quantization_factor = quantization_factors.get(sub_bands[k], 10)
-                    quantized_coeff = np.round(coeff_thresholded / quantization_factor) * quantization_factor
-                    quantized_bands.append(quantized_coeff)
-
-                quantized_coeffs[channel_name].append(tuple(quantized_bands))
-
+        # Kanalı yeniden yapılandır
         reconstructed_channel = pywt.waverec2(quantized_coeffs[channel_name], wavelet)
         reconstructed_channel = np.clip(reconstructed_channel, 0, 1)
         reconstructed_channel = (reconstructed_channel * 255).astype(np.uint8)
         reconstructed_channel = reconstructed_channel[:original_image_shape[0], :original_image_shape[1]]
-        downsample_factor = 3  # Use a factor of 2 or 3 for higher compression
-        reconstructed_channel = reconstructed_channel[::downsample_factor, ::downsample_factor]
-        reconstructed_channel = cv2.resize(reconstructed_channel, (original_image_shape[1], original_image_shape[0]))
         reconstructed_channels.append(reconstructed_channel)
 
+    # Tüm kanalları birleştir
     if len(reconstructed_channels) == 1:
         reconstructed_image = reconstructed_channels[0]
     else:

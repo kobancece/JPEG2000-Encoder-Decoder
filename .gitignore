@@ -1,2 +1,15 @@
+# Python cache dosyaları ve klasörleri
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Genel medya ve log dosyaları
+*.jpg
+*.jpeg
+*.png
+*.log
+
+# MacOS ve Windows sistem dosyaları
+.DS_Store
+Thumbs.db

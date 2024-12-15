@@ -28,6 +28,7 @@ def apply_dwt(image, wavelet='haar', levels=2):
 
     for i, channel_name in enumerate(channels):
         channel = image if is_grayscale else image[:, :, i]
+        # DWT işlemi, çıktı varsayılan olarak bir tuple dönecektir
         coeffs = pywt.wavedec2(channel, wavelet=wavelet, level=levels, mode='symmetric')
         dwt_coeffs[channel_name] = coeffs
 
