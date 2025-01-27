@@ -5,7 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JPEG2000 Encoder</title>
-    <link rel="stylesheet" href="{% static 'style_encoder.css' %}">
+    <link rel="stylesheet" href="{% static './style.css' %}">
+    <link rel="icon" href="{% static 'favicon.ico' %}" type="image/x-icon">
 </head>
 <body>
     <div class="container">
@@ -18,42 +19,43 @@
 
             <div class="parameter-group">
 
-                <label  for="wavelet_level" name="wavelet_level" class="tooltip">Wavelet Level
-                    <input type="number" name="wavelet_level" min="1" max="5" value="{{ wavelet_level }}" required>
-                    <span class="tooltip-text">A lower wavelet level provides less compression and better image quality, but larger file size. A higher wavelet level provides more compression and smaller file size, but may increase image quality degradation.</span>
-                </label>
+                <label for="wavelet-level">Wavelet Level</label>
+                <input
+                    type="number"
+                    id="wavelet-level"
+                    name="wavelet_level"
+                    min="1"
+                    max="5"
+                    value="{{ wavelet_level|default_if_none:2 }}"
+                    required
+                />
 
+                <label for="compression-ratio">Compression Ratio</label>
+                <input
+                    type="number"
+                    id="compression-ratio"
+                    name="compression_ratio"
+                    min="10"
+                    max="100"
+                    value="{{ compression_ratio|default_if_none:40 }}"
+                    required
+                />
 
-                <!-- Compression Ratios Dropdown -->
-                <label for="compression_ratios" class="tooltip">Compression Ratios
-                    <select id="compression-ratio" name="compression_ratios" required>
-                        <option value="30,20">30,20</option>
-                        <option value="40,30">40,30</option>
-                    </select>
-                    <span class="tooltip-text">A small compression ratio (for example, 30,20) produces higher image quality but reduces file size less. A large compression ratio (for example, 40,30) reduces file size significantly but may result in greater image quality loss.</span>
-                </label>
+                <label for="threshold">Threshold</label>
+                <input
+                    type="number"
+                    id="threshold"
+                    name="threshold"
+                    min="0.0"
+                    max="5.0"
+                    step="0.01"
+                    value="{{ threshold|default_if_none:1.0 }}"
+                    required
+                />
 
-                <!-- Tile Size Dropdown -->
-                <label for="tile-size" class="tooltip">Tile Size
-                    <select id="tile-size" name="tile_size" required>
-                        <option value="128,128">128x128</option>
-                        <option value="64,64">64x64</option>
-                    </select>
-                    <span class="tooltip-text">A smaller tile size (e.g. 64x64) provides more granular compression and preserves better quality in small areas, but may increase processing time. A larger tile size (e.g. 128x128) speeds up compression but may be more susceptible to quality loss in large areas.</span>
-                </label>
-
-                <label class="tooltip">Threshold
-                    <input type="number" name="threshold" min="0.01" max="5" step="0.01" value="{{ threshold }}" required>
-                    <span class="tooltip-text">A lower threshold value preserves more detail but may reduce the compression ratio, resulting in larger file sizes. A higher threshold value increases the compression ratio but may result in loss of fine detail and reduced image quality.</span>
-                </label>
-
-                <label for="roi" class="tooltip">ROI
-                    <span class="tooltip-text">Using ROI (Region of Interest) allows a specific area of ​​the image to be compressed at a higher quality and preserves the details in that area. Areas outside the ROI are compressed more, reducing file size, but there may be a loss of quality in these areas.</span>
-                </label>
-
-                <!-- ROI Seçimi -->
-                <div class="roi-container" style="margin-bottom: 5%">
-                    <p style="display: inline;">Would you like to adjust Roi?</p>
+                <label for="roi">ROI</label>
+                <div class="roi-container" style="margin-bottom: 5%;">
+                    <p style="display: inline;">Would you like to adjust ROI?</p>
                     <button type="button" id="roi-yes" style="margin-left: 10px;">Yes</button>
                 </div>
                 <div id="roi-selector" style="display: none;">
@@ -64,7 +66,6 @@
                     <p>Selected Area (ROI): <span id="roi-coordinates">None</span></p>
                 </div>
 
-                <!-- Gizli ROI Input -->
                 <input type="hidden" name="roi" id="roiInput" value="None">
             </div>
             <button type="submit">Encode</button>
@@ -125,22 +126,42 @@
         });
 
         // Resmi Canvas'a Yükleme
-        function loadImageIntoCanvas() {
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                img = new Image();
-                img.onload = function () {
-                    ctx = imageCanvas.getContext('2d');
-                    imageCanvas.width = img.width;
-                    imageCanvas.height = img.height;
-                    ctx.drawImage(img, 0, 0);
-                };
-                img.src = e.target.result;
+    function loadImageIntoCanvas() {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            img = new Image();
+            img.onload = function () {
+                ctx = imageCanvas.getContext('2d');
+
+                // Canvas boyutlarını ayarla
+                const canvasMaxWidth = canvasContainer.offsetWidth;
+                const canvasMaxHeight = canvasContainer.offsetHeight;
+
+                const imgAspectRatio = img.width / img.height;
+                const canvasAspectRatio = canvasMaxWidth / canvasMaxHeight;
+
+                let newWidth, newHeight;
+
+                if (imgAspectRatio > canvasAspectRatio) {
+                    newWidth = canvasMaxWidth;
+                    newHeight = canvasMaxWidth / imgAspectRatio;
+                } else {
+                    newHeight = canvasMaxHeight;
+                    newWidth = canvasMaxHeight * imgAspectRatio;
+                }
+
+                imageCanvas.width = newWidth;
+                imageCanvas.height = newHeight;
+
+                // Resmi canvas'a çiz
+                ctx.drawImage(img, 0, 0, newWidth, newHeight);
             };
-            if (fileInput.files.length > 0) {
-                reader.readAsDataURL(fileInput.files[0]);
-            }
+            img.src = e.target.result;
+        };
+        if (fileInput.files.length > 0) {
+            reader.readAsDataURL(fileInput.files[0]);
         }
+    }
 
         // Canvas Üzerinde ROI Seçimi
         imageCanvas.addEventListener('mousedown', function (e) {

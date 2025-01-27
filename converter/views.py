@@ -16,119 +16,166 @@ from utils.ebcot import apply_ebcot
 from utils.arithmetic_encoding import apply_arithmetic_coding
 from utils.convert import convert_jp2_to_png
 import os
-import glymur
-import numpy as np
 #import logging
 from utils.decode import decode_images
+import uuid
+from mimetypes import guess_type
+from django.core.files.storage import FileSystemStorage
+from django_ratelimit.decorators import ratelimit
+import cv2
+import numpy as np
+from django.http import FileResponse
+from django.shortcuts import render
 
-#logger = logging.getLogger(__name__)
-#logger.setLevel(logging.INFO)  
-#logger.debug('Debug mesajı')
-#logger.info('Info mesajı')
-#logger.warning('Warning mesajı')
-#logger.error('Error mesajı')
-
+MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # Maks 5 MB
 
 def home(request):
     return render(request, 'converter/home.html')
 
+def apply_dwt_cv_rgb(image, wavelet_level):
+    """
+    OpenCV kullanarak RGB görüntüye DWT uygula.
+    """
+    if len(image.shape) != 3 or image.shape[2] != 3:  # Control of RGB
+        raise ValueError("The input image must be an RGB image.")
+
+    transformed_channels = []
+    for channel in cv2.split(image):  # Seperate RGB channels
+        channel = np.float32(channel)  # DCT için float32 veri tipine dönüştür
+        transformed = channel.copy()
+        for _ in range(wavelet_level):
+            transformed = cv2.dct(transformed)  # Apply DCT
+        transformed_channels.append(transformed)
+
+    return cv2.merge(transformed_channels)  # Kanalları birleştirerek RGB olarak geri döndür
+
+
+def inverse_dwt_cv_rgb(dwt_image, wavelet_level):
+    """
+    OpenCV kullanarak RGB görüntüde ters DWT uygula.
+    """
+    if len(dwt_image.shape) != 3 or dwt_image.shape[2] != 3:  # RGB kontrolü
+        raise ValueError("The input image must be an RGB image.")
+
+    reconstructed_channels = []
+    for channel in cv2.split(dwt_image):  # RGB kanalları ayır
+        channel = channel.copy()
+        for _ in range(wavelet_level):
+            channel = cv2.idct(channel)  # Ters DCT uygula
+        reconstructed_channels.append(channel)
+
+    return cv2.merge(reconstructed_channels)  # Kanalları birleştirerek RGB olarak geri döndür
+
+@ratelimit(key='ip', rate='7/m', block=True)
 def encode(request):
     if request.method == 'POST':
-        # Retrieve user inputs
         uploaded_image = request.FILES['image']
-        
-        # Check file format
         if not uploaded_image.name.lower().endswith(('.jpeg', '.jpg')):
             return render(request, 'converter/encode.html', {
                 'error': "Only JPEG format is allowed. Please upload a valid JPEG image.",
             })
-            
-        wavelet_level = int(request.POST.get('wavelet_level', 2))
-        compression_ratios = list(map(int, request.POST.get('compression_ratios', '40,30').split(',')))
-        tile_size = tuple(map(int, request.POST.get('tile_size', '128,128').split(',')))
-        threshold = float(request.POST.get('threshold', 0.01))
-        roi = request.POST.get('roi', None)
 
-        # Save uploaded image
-        fs = FileSystemStorage()
-        filename = fs.save(uploaded_image.name, uploaded_image)
-        uploaded_image_path = fs.path(filename)
-
-        # Get original image size
-        original_size = get_image_size(uploaded_image_path)
-
-        # Prepare the image
-        processed_image = load_and_prepare_image(uploaded_image_path)
-
-        # Apply ROI if provided
         try:
-            if roi and roi != "None":
-                roi_coords = tuple(map(int, roi.split(',')))  # Convert to integers
-                if len(roi_coords) != 4:
-                    raise ValueError("ROI must have exactly 4 values (x, y, width, height).")
-                processed_image = apply_roi_with_highlight(processed_image, roi_coords)
-        except ValueError as e:
+            # Dosyayı medya klasörüne kaydet
+            fs = FileSystemStorage()
+            filename = fs.save(uploaded_image.name, uploaded_image)
+            uploaded_image_path = fs.path(filename)
+
+            # Kullanıcıdan gelen parametreleri al
+            wavelet_level = int(request.POST.get('wavelet_level', 2))  # DWT seviyeleri
+            threshold = float(request.POST.get('threshold', 0.01))  # Threshold değeri (0.0 - 5.0)
+            compression_ratio = int(request.POST.get('compression_ratio', 30))  # Sıkıştırma oranı
+
+            # Compression ratio kontrolü
+            if compression_ratio < 10 or compression_ratio > 100:
+                return render(request, 'converter/encode.html', {
+                    'error': "Compression ratio must be between 20 and 100.",
+                })
+
+            # Threshold kontrolü
+            if threshold < 0.0 or threshold > 5.0:
+                return render(request, 'converter/encode.html', {
+                    'error': "Threshold must be between 0.0 and 5.0.",
+                })
+
+            # ROI (Region of Interest) kontrolü
+            try:
+                roi_coords = request.POST.get('roi', None)
+                if roi_coords and roi_coords.lower() != "none":
+                    x, y, width, height = map(int, roi_coords.split(','))
+                    roi_coords = (x, y, width, height)
+                else:
+                    roi_coords = None
+            except ValueError as e:
+                return render(request, 'converter/encode.html', {
+                    'error': f"Invalid ROI format. Please enter coordinates as integers in 'x,y,width,height'. Error: {str(e)}"
+                })
+
+            # Orijinal dosya boyutunu al
+            original_size = get_image_size(uploaded_image_path)
+
+            # Görüntüyü yükle
+            image = cv2.imread(uploaded_image_path, cv2.IMREAD_COLOR)  # RGB olarak yükle
+            if image is None:
+                raise ValueError("Image loading failed.")
+
+            # ROI uygula: ROI bölgesi kalitesini koru, diğer bölgeleri sıkıştır
+            if roi_coords:
+                x, y, width, height = roi_coords
+                image = apply_roi_preservation(image, roi_coords)
+
+            # DWT işlemini uygula
+            transformed_image = apply_dwt_cv_rgb(image, wavelet_level)
+
+            # Threshold uygula
+            threshold_value = threshold * 255 / 5.0  # Normalize threshold (0-255 aralığına)
+            transformed_image = np.where(transformed_image > threshold_value, transformed_image, 0)
+
+            # Ters DWT işlemini uygula
+            reconstructed_image = inverse_dwt_cv_rgb(transformed_image, wavelet_level)
+
+            # Görüntüyü sıkıştır ve kaydet (JPEG2000)
+            compressed_filename = f"compressed_{uploaded_image.name}.jp2"
+            compressed_path = fs.path(compressed_filename)
+            compression_param = int(100 / compression_ratio)
+            cv2.imwrite(
+                compressed_path,
+                np.uint8(reconstructed_image),
+                [cv2.IMWRITE_JPEG2000_COMPRESSION_X1000, compression_param]
+            )
+
+            # PNG önizleme dosyasını oluştur
+            png_filename = f"compressed_preview_{uploaded_image.name}.png"
+            png_path = fs.path(png_filename)
+            cv2.imwrite(png_path, np.uint8(reconstructed_image), [cv2.IMWRITE_PNG_COMPRESSION, 9])  # PNG sıkıştırması
+
+            # Sıkıştırılmış dosya boyutunu al
+            compressed_size = get_image_size(compressed_path)
+
+            # PNG dosyasının URL'sini oluştur
+            png_url = fs.url(png_filename)
+
             return render(request, 'converter/encode.html', {
-                'error': f"Invalid ROI format: {e}",
+                'result_image': png_url,  # PNG görüntüsü tarayıcıda gösterilecek
+                'original_size': f"{original_size:.2f} KB",
+                'compressed_size': f"{compressed_size:.2f} KB",
                 'wavelet_level': wavelet_level,
-                'compression_ratios': ','.join(map(str, compression_ratios)),
-                'tile_size': ','.join(map(str, tile_size)),
                 'threshold': threshold,
-                'roi': roi,
+                'compression_ratio': compression_ratio,
+                'roi': roi_coords if roi_coords else "None",
+                'compressed_image_url': fs.url(compressed_filename),  # JP2 dosyası indirilecek
             })
 
-
-        # Apply DWT
-        dwt_results = apply_dwt(processed_image, wavelet='haar', levels=wavelet_level)
-
-        # Apply Quantization
-        quantized_coeffs, reconstructed_image = apply_quantization(
-            dwt_results, processed_image.shape, threshold_ratio=threshold, wavelet='haar'
-        )
-
-        # Apply EBCOT
-        # ebcot_streams = apply_ebcot(reconstructed_image, block_size=64, target_rate=0.5)
-
-        # Apply Arithmetic Coding
-        #arithmetic_compressed_streams = apply_arithmetic_coding(ebcot_streams)
-
-        # Save as JPEG2000
-        compressed_filename = f"compressed_{uploaded_image.name}.jp2"
-        compressed_path = fs.path(compressed_filename)
-        save_image_as_jp2(reconstructed_image, compressed_path, compression_ratios=compression_ratios, tilesize=tile_size)
-
-        # JP2 dosyasını PNG'ye dönüştür
-        png_filename = f"compressed_preview_{uploaded_image.name}.png"
-        png_path = fs.path(png_filename)
-        if convert_jp2_to_png(compressed_path, png_path):
-            png_url = fs.url(png_filename)
-        else:
-            png_url = None
-
-        # Get compressed image size
-        compressed_size = get_image_size(compressed_path)
-
-        # Render template with all inputs and results
-        return render(request, 'converter/encode.html', {
-            'result_image': png_url,  # PNG görüntüsü tarayıcıda gösterilecek
-            'original_size': f"{original_size:.2f} KB",
-            'compressed_size': f"{compressed_size:.2f} KB",
-            'wavelet_level': wavelet_level,
-            'compression_ratios': ','.join(map(str, compression_ratios)),
-            'tile_size': ','.join(map(str, tile_size)),
-            'threshold': threshold,
-            'roi': roi,
-            'compressed_image_url': fs.url(compressed_filename),  # JP2 dosyası indirilecek
-        })
+        except Exception as e:
+            return render(request, 'converter/encode.html', {
+                'error': f"An error occurred: {str(e)}",
+            })
 
     return render(request, 'converter/encode.html', {
         'wavelet_level': 2,
-        #'compression_ratios': '10,20,40',
-        'tile_size': '128,128',
         'threshold': 0.01,
-        'roi': '',
+        'compression_ratio': 30,
     })
-
 
 def decode(request):
     if request.method == 'POST':
@@ -165,3 +212,50 @@ def decode(request):
             return render(request, 'converter/decode.html', {'error_message': error})
 
     return render(request, 'converter/decode.html')
+
+
+def validate_uploaded_file(uploaded_file, valid_mime_types):
+    """
+    Validates the uploaded file's MIME type, size, and extension.
+    
+    Parameters:
+        uploaded_file (File): The uploaded file object.
+        valid_mime_types (list): List of valid MIME types.
+    
+    Returns:
+        str: A sanitized and unique file name for saving.
+    
+    Raises:
+        ValueError: If the file does not meet validation criteria.
+    """
+    # 1. Dosya boyutunu kontrol et
+    if uploaded_file.size > MAX_UPLOAD_SIZE:
+        raise ValueError("File size exceeds the maximum limit of 5 MB.")
+    
+    # 2. MIME türünü kontrol et
+    mime_type, _ = guess_type(uploaded_file.name)
+    if mime_type not in valid_mime_types:
+        raise ValueError(f"Unsupported file type: {mime_type}. Supported types are: {', '.join(valid_mime_types)}.")
+    
+    # 3. Güvenli dosya adı oluştur
+    unique_filename = f"{uuid.uuid4().hex}_{uploaded_file.name}"
+    return unique_filename
+
+def apply_roi_preservation(image, roi_coords):
+    """
+    ROI bölgesinin kalitesini korur, diğer bölgeleri sıkıştırmaya hazırlar.
+    """
+    x, y, width, height = roi_coords
+
+    # ROI bölgesini maske oluştur
+    mask = np.zeros(image.shape[:2], dtype=np.uint8)
+    mask[y:y+height, x:x+width] = 255
+
+    # ROI dışındaki bölgeleri bulanıklaştır
+    blurred = cv2.GaussianBlur(image, (15, 15), 0)
+
+    # ROI bölgesini koru ve diğer bölgeleri sıkıştırmaya hazırla
+    roi_preserved = cv2.bitwise_and(image, image, mask=mask)  # ROI'yi koru
+    non_roi = cv2.bitwise_and(blurred, blurred, mask=255-mask)  # Diğer bölgeleri sıkıştırmaya hazırla
+
+    return roi_preserved + non_roi
