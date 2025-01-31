@@ -9,27 +9,36 @@ import glymur
 import cv2
 
 
-def apply_dwt(image, wavelet='haar', levels=2):
+def apply_dwt_cv_rgb(image, wavelet_level):
     """
-    Apply Discrete Wavelet Transform (DWT) to an image.
-
-    Parameters:
-        image (numpy.ndarray): Input image (grayscale or RGB).
-        wavelet (str): Wavelet type (default: 'haar').
-        levels (int): Number of decomposition levels (default: 2).
-
-    Returns:
-        dict: Contains DWT coefficients for each channel.
+    Apply DWT to RGB image using OpenCV.
     """
-    print("\nApplying DWT...")
-    is_grayscale = len(image.shape) == 2
-    channels = ['Gray'] if is_grayscale else ['R', 'G', 'B']
-    dwt_coeffs = {}
+    if len(image.shape) != 3 or image.shape[2] != 3:  # Control of RGB
+        raise ValueError("The input image must be an RGB image.")
 
-    for i, channel_name in enumerate(channels):
-        channel = image if is_grayscale else image[:, :, i]
-        # DWT işlemi, çıktı varsayılan olarak bir tuple dönecektir
-        coeffs = pywt.wavedec2(channel, wavelet=wavelet, level=levels, mode='symmetric')
-        dwt_coeffs[channel_name] = coeffs
+    transformed_channels = []
+    for channel in cv2.split(image):  # Seperate RGB channels
+        channel = np.float32(channel)
+        transformed = channel.copy()
+        for _ in range(wavelet_level):
+            transformed = cv2.dct(transformed)  # Apply DCT
+        transformed_channels.append(transformed)
 
-    return dwt_coeffs
+    return cv2.merge(transformed_channels)
+
+
+def inverse_dwt_cv_rgb(dwt_image, wavelet_level):
+    """
+    Apply inverse DWT on RGB image using OpenCV.
+    """
+    if len(dwt_image.shape) != 3 or dwt_image.shape[2] != 3:  # RGB control
+        raise ValueError("The input image must be an RGB image.")
+
+    reconstructed_channels = []
+    for channel in cv2.split(dwt_image):  # Seperate RGB channels
+        channel = channel.copy()
+        for _ in range(wavelet_level):
+            channel = cv2.idct(channel)  # apply inverse DCT
+        reconstructed_channels.append(channel)
+
+    return cv2.merge(reconstructed_channels)
